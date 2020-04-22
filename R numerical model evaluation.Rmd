@@ -149,14 +149,15 @@ NMSE的值超過1時，表示模型很糟糕，越小越好。
 依變數Y的總變異量\(SS_{t}\) 可以拆解成 可被迴歸模型解釋的回歸變異量\(SS_{regression}\)與不可解釋的殘差(誤差)變異量\(SS_{e}\)<br>
 \[SS_{t}=SS_{regression}+SS_{e}\]
 \[\sum(y-\bar{y})^{2}=\sum(y-\hat{y})^{2}+\sum(\hat{y}-\bar{y})^{2}\]
-對於總離差平方和怎麼拆解的，有興趣的我在最下面推導。
-則可用比例的概念來思考，如果總變異量為1，那麼迴歸模型解釋的百分比佔多少，殘差又佔多少？
+對於總離差平方和怎麼拆解的，我在另外一篇文章[SST拆解證明](https://rpubs.com/ivan0628/SST-disassemble)討論。<br>
+
+我們用比例的概念來思考，如果總變異量為1，那麼迴歸模型解釋的百分比佔多少，殘差又佔多少？
 \[1=\frac{SS_{regression}}{SS_{t}}+\frac{SS_{e}}{SS_{t}}\]
 
 回歸可解釋的變異量
 \[R^{2}=\frac{SS_{regression}}{SS_{t}}=1-\frac{SS_{e}}{SS_{t}}\]
 
-一般來說，\(R^{2}\)越大，表示模型擬合效果越好。<br> 模型解釋了多少，反映的就是大概有多準，隨著樣本數量的增加，\(R^{2}\)必然增加，無法真正說明準確程度，只能大概定量。
+一般來說，\(R^{2}\)越大，表示模型擬合效果越好。<br> 模型解釋了多少，反映的就是大概有多準，隨著樣本數量的增加，\(R^{2}\)必然增加，無法真正說明準確程度，只能大概定量。<br>
 
 多大的值才代表模型的精度高呢？這個其實沒有統一的標準。但依經驗歸納如下：<br>
 \(R^{2}\)的值大於0.75，表示迴歸模型擬合度很好，迴歸方程的可解釋程度較高，即迴歸方程的精度較高。
@@ -334,46 +335,6 @@ car::ncvTest(lm.fit)
 　　②隨機誤差與觀測者，測量工具，被觀測物體的性質有關，只能儘量減小，卻不能避免。<br>
 (2)殘差與預測有關，殘差大小可以衡量預測的準確性。殘差越大表示預測越不準確。殘差與資料本身的分佈特性，回歸方程的選擇有關。
 
-## 補充：總離差平方和推導
-\(y_{i}\)代表真實值；\(\bar{y}\)平均值；\(\hat{y_{i}}\)代表預測值；
-\(i\in[1,n]\)<br>
-\[(y_{i}-\bar{y})=(y_{i}-\hat{y_{i}})+(\hat{y_{i}}-\bar{y})\]
-將兩邊平方並加總
-\[\sum_{i=1}^{n} (y_{i}-\bar{y})^{2}=\sum_{i=1}^{n} (y_{i}-\hat{y_{i}})^{2}+\sum_{i=1}^{n} (\hat{y_{i}}-\bar{y})^{2}+\sum_{i=1}^{n}2(y_{i}-\hat{y_{i}})(\hat{y_{i}}-\bar{y})\]
-之後我們來證明
-\[\sum_{i=1}^{n}2(y_{i}-\hat{y_{i}})(\hat{y_{i}}-\bar{y})=0\]
-就可以讓
-\[SS_{t}=SS_{regression}+SS_{e}\]
-
-以簡單回歸（一個自變數\(x_{i}\)）的狀況當作例子：
-\[\hat{y_{i}}=\hat{a}+\hat{b}x_{i}\]
-\[\bar{y}=\hat{a}+\hat{b}\bar{x}\]
-而回歸模型中，斜率
-\[\hat{b}=\frac{cov(x,y)}{s^2}=\frac{\sum_{i=1}^{n}(x_{i}-\bar{x})(y_{i}-\bar{y})}{\sum_{i=1}^{n}(x_{i}-\bar{x})^2}\]
-因此，
-\[\hat{y_{i}}-\bar{y}=\hat{b}(x_{i}-\bar{x})\]
-\[y_{i}-\hat{y_{i}}=(y_{i}-\bar{y})-(\hat{y_{i}}-\bar{y})=(y_{i}-\bar{y})-\hat{b}(x_{i}-\bar{x})\]
-所以，
-\[\sum_{i=1}^{n}2(y_{i}-\hat{y_{i}})(\hat{y_{i}}-\bar{y})=2\hat{b}\sum_{i=1}^{n}(y_{i}-\hat{y_{i}})(x_{i}-\bar{x})\]
-\[=2\hat{b}\sum_{i=1}^{n}((y_{i}-\bar{y})-\hat{b}(x_{i}-\bar{x}))(x_{i}-\bar{x_{i}})\]
-\[=2\hat{b}\sum_{i=1}^{n}((y_{i}-\bar{y})(x_{i}-\bar{x})-\hat{b}(x_{i}-\bar{x})^2)\]
-\[=2\hat{b}\sum_{i=1}^{n}((y_{i}-\bar{y})(x_{i}-\bar{x})-\frac{\sum_{i=1}^{n}(x_{i}-\bar{x})(y_{i}-\bar{y})}{\sum_{i=1}^{n}(x_{i}-\bar{x})^2}(x_{i}-\bar{x})^2)\]
-\[=2\hat{b}(0)=0\]
-
-```{r prove sst}
-#這邊簡單驗證一下
-y <- sort(round(runif(10,min=0,max=50)))
-x <- 1:10
-x_mean <- mean(x)
-y_mean <- mean(y)
-b_hat <-  sum((x-x_mean)*(y-y_mean))/sum((x-x_mean)^2) ;b_hat #斜率
-a_hat <-  y_mean-b_hat*x_mean; a_hat #截距
-lm(y~x)
-y_estimate <- a_hat+b_hat*x
-#SST=SSreg+SSe
-sum((y-y_mean)^2)==sum((y_estimate-y_mean)^2)+sum((y-y_estimate)^2)
-
-```
 
 ***
 越寫越滿了，原本沒要寫這麼多的！邊寫邊訓練腦袋

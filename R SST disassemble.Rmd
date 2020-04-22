@@ -1,0 +1,85 @@
+---
+title: "R SST拆解證明"
+author: "Ivan Lin"
+date: "2020年4月18日"
+output: 
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+---
+```{r setup, include=FALSE}
+#這段並不會show出來
+knitr::opts_chunk$set(echo = TRUE)
+require(kableExtra)
+require(car)
+require(tidyverse)
+require(prettydoc)
+require(Metrics)
+knitr::opts_chunk$set(echo = TRUE)
+options(knitr.table.format = "html") 
+```
+這個證明需要花點篇幅，因此獨立來寫。<br>
+在做回歸時，我們能將總離均差平方和\(SS_{T}\)拆解成回歸離均差平方和\(SS_{regression}\)與誤差離均差平方和\(SS_{e}\)。<br>
+之後在計算\(R^{2}\)時，會使用\(SS_{T}\)-\(SS_{e}\)來計算\(SS_{regression}\)<br>
+
+但問題是，為什麼這個公式可以成立呢？<br>
+\[SS_{t}=SS_{regression}+SS_{e}\]
+\[\sum_{i=1}^{n} (y_{i}-\bar{y})^{2}=\sum_{i=1}^{n} (y_{i}-\hat{y_{i}})^{2}+\sum_{i=1}^{n} (\hat{y_{i}}-\bar{y})^{2}\]
+
+![Regression Line](.\pics\regression line.png)<br>
+這張圖修改自[Tommy線性回歸](https://medium.com/@chih.sheng.huang821/%E7%B7%9A%E6%80%A7%E5%9B%9E%E6%AD%B8-linear-regression-3a271a7453e)
+<br>
+可以參照
+![R變異量分析表](.\pics\R variation analysis table.png)
+
+
+請看以下證明：
+
+# 總離差平方和推導
+\(y_{i}\)代表真實值；\(\bar{y}\)平均值；\(\hat{y_{i}}\)代表預測值；
+\(i\in[1,n]\)<br>
+\[(y_{i}-\bar{y})=(y_{i}-\hat{y_{i}})+(\hat{y_{i}}-\bar{y})\]
+將兩邊平方並加總
+\[\sum_{i=1}^{n} (y_{i}-\bar{y})^{2}=\sum_{i=1}^{n} (y_{i}-\hat{y_{i}})^{2}+\sum_{i=1}^{n} (\hat{y_{i}}-\bar{y})^{2}+\sum_{i=1}^{n}2(y_{i}-\hat{y_{i}})(\hat{y_{i}}-\bar{y})\]
+之後我們來證明
+\[\sum_{i=1}^{n}2(y_{i}-\hat{y_{i}})(\hat{y_{i}}-\bar{y})=0\]
+就可以讓
+\[SS_{t}=SS_{regression}+SS_{e}\]
+
+以簡單回歸（一個自變數\(x_{i}\)）的狀況當作例子：
+\[\hat{y_{i}}=\hat{a}+\hat{b}x_{i}\]
+\[\bar{y}=\hat{a}+\hat{b}\bar{x}\]
+而回歸模型中，斜率
+\[\hat{b}=\frac{cov(x,y)}{s^2}=\frac{\sum_{i=1}^{n}(x_{i}-\bar{x})(y_{i}-\bar{y})}{\sum_{i=1}^{n}(x_{i}-\bar{x})^2}\]
+<br>
+因此，
+\[\hat{y_{i}}-\bar{y}=\hat{b}(x_{i}-\bar{x})\]
+\[y_{i}-\hat{y_{i}}=(y_{i}-\bar{y})-(\hat{y_{i}}-\bar{y})=(y_{i}-\bar{y})-\hat{b}(x_{i}-\bar{x})\]
+所以，
+\[\sum_{i=1}^{n}2(y_{i}-\hat{y_{i}})(\hat{y_{i}}-\bar{y})=2\hat{b}\sum_{i=1}^{n}(y_{i}-\hat{y_{i}})(x_{i}-\bar{x})\]
+\[=2\hat{b}\sum_{i=1}^{n}((y_{i}-\bar{y})-\hat{b}(x_{i}-\bar{x}))(x_{i}-\bar{x_{i}})\]
+\[=2\hat{b}\sum_{i=1}^{n}((y_{i}-\bar{y})(x_{i}-\bar{x})-\hat{b}(x_{i}-\bar{x})^2)\]
+\[=2\hat{b}\sum_{i=1}^{n}((y_{i}-\bar{y})(x_{i}-\bar{x})-\frac{\sum_{i=1}^{n}(x_{i}-\bar{x})(y_{i}-\bar{y})}{\sum_{i=1}^{n}(x_{i}-\bar{x})^2}(x_{i}-\bar{x})^2)\]
+\[=2\hat{b}(0)=0\]
+
+# 在R中驗證
+我們在R裡面創個簡單的數列與回歸來測試一下<br>
+```{r prove sst}
+y <- sort(round(runif(10,min=0,max=50))) #隨機生成Y數列
+x <- 1:10
+x_mean <- mean(x)
+y_mean <- mean(y)
+b_hat <-  sum((x-x_mean)*(y-y_mean))/sum((x-x_mean)^2) ;b_hat #斜率
+a_hat <-  y_mean-b_hat*x_mean; a_hat #截距
+lm(y~x)
+y_estimate <- a_hat+b_hat*x
+#SST=SSreg+SSe
+sum((y-y_mean)^2)==sum((y_estimate-y_mean)^2)+sum((y-y_estimate)^2)
+
+```
+<br>
+Bingo！之後會在另一篇文章來探討回歸的計算！<br>
+
+***
+如果內容有任何問題或錯誤，歡迎來信跟我聯絡唷！ 
+ivan0628@gmail.com

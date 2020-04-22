@@ -1,0 +1,10 @@
+name: Publish Document
+title:
+username:
+account: rpubs
+server: rpubs.com
+hostUrl: rpubs.com
+appId: https://api.rpubs.com/api/v1/document/602857/d953f30d2fd24d1987d9d20f57054fc2
+bundleId: https://api.rpubs.com/api/v1/document/602857/d953f30d2fd24d1987d9d20f57054fc2
+url: http://rpubs.com/ivan0628/602857
+when: 1587528835.27458
