@@ -1,0 +1,386 @@
+---
+title: "R 數值預估評估方法"
+author: "Ivan Lin"
+date: "2020年4月18日"
+output: 
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+---
+```{r setup, include=FALSE}
+#這段並不會show出來
+knitr::opts_chunk$set(echo = TRUE)
+require(kableExtra)
+require(car)
+require(tidyverse)
+require(prettydoc)
+require(Metrics)
+knitr::opts_chunk$set(echo = TRUE)
+options(knitr.table.format = "html") 
+```
+
+## 模型評估-驗證指標(validation index)
+
+若將預測這件事簡單區分成兩大種類，大致可分為<br>
+1. 機率預測，比如會不會下雨、下一張牌的紅心A...<br>
+2. 數值預測，比如預測下一季的銷售量、捷運站的客流量...<br>
+我們利用所蒐集到的資料訓練出模型進行預測，然而怎麼評估模型成效(Performance)呢？<br>
+
+我們會使用驗證指標(validation index)來當作成效參考，對應到機器學習領域，依據應用分為「分類指標」和「回歸指標」。
+
+**機率預測的「分類指標」**:   <br>
+    - 二元相關：混淆矩陣confusion matrix和相對應驗證指標、ROC曲線、AUC。<br>
+    - 多元相關：多元混淆矩陣和相對應驗證指標。<br>
+
+**數值預測的「回歸指標」**:   <br>
+    - 絕對誤差(Absolute Error, E)、相對誤差(Relative Error, e) <br>
+    - 平均絕對誤差(Mean Absolute Error, MAE) <br>
+    - 平均均方誤差(Mean Squared Error, MSE) <br>
+    - 平均均方對數誤差(Mean Squared Logarithmic Error, MSLE) <br>
+    - 正歸化均方誤差、均方根誤差 <br>
+
+這篇先來介紹數值預測的迴歸指標，相對比較容易一些。<br>
+
+## 數值回歸前情提要
+在講述數值模型評估方法前，還是不厭其煩的前情提要，數值預估多採用線性回歸（Linear regression），是找出自變數(independent variable)和依變數(dependent variable)之間的關係建立出來的模型。<br>
+
+白話來說，就是找到一條公式，可以解釋自變數\(x\)(或稱內生變數endogenous variable)與依變數\(y\)(外生變數exogenous variable)的關係，也就是 \(y=bx+a \) <br>
+
+當只有一個自變數和一個依變數的情形稱為簡單線性回歸(Simple linear regression)，超過一個自變數的情形稱為多元回歸(multiple regression)。<br>
+
+## 數值預測評估方法
+對於數值預測的效果評估，「回歸指標」主要是比較真實數值與預測結果，例如預測銷售量為25645，預測為24332，比較兩者差異值1313，即為最簡單的絕對誤差，從此概念延伸有許多的誤差計算法，觀察真實數列與預測數列的接近程度，越接近就表示預測模型效果越好。
+
+下面就要介紹常見的評估指標，首先
+
+我們討論時，假設資料列共有n個值，以符號代表：<br>
+　　\(y_{i}\)代表真實值<br>
+　　\(\hat{y_{i}}\)代表預測值<br>
+　　\(i\in[1,n]\)<br>
+另外！自由度的問題會擺在後面討論。<br>
+
+***
+## 絕對誤差(Absolute Error, E)
+\[E_{i}= y_{i}-\hat{y_{i}} \]  
+很直覺，真實值和預測值差異，其值當然是越小越好，絕對誤差有正負之分(但也有些教科書取絕對值)。<br>
+這裡我們參考[Wiki](https://zh.wikipedia.org/wiki/%E8%AF%AF%E5%B7%AE)上的定義。
+從樣本所估計得到的誤差為"殘差(Residual)"，誤差與殘差的差別我在後面討論！。
+舉例：預測今天總來客數是1500人，實際上是1600人，差了-100即為E。  
+![Regression Line](.\pics\regression line.png)<br>
+這張圖修改自[Tommy線性回歸](https://medium.com/@chih.sheng.huang821/%E7%B7%9A%E6%80%A7%E5%9B%9E%E6%AD%B8-linear-regression-3a271a7453e)
+不得不推Tommy大的Medium非常精彩！<br>
+這張圖上的殘差就是這裡說的E，真實值、預測值、平均值之間的關係都可以用符號代表。
+
+## 相對誤差(Relative Error, e)；百分誤差
+\[e_{i}=\frac{y_{i}-\hat{y_{i}}}{y_{i}}\]
+將絕對誤差除上真實值，大多數情況能將數值控制在1與-1之間。此時失去單位，可用做不同預測值間的比較。
+承上例，-100/1500= -0.06 ;約為 6%  
+
+## 平均絕對誤差(Mean Absolute Error, MAE)
+\[MAE=\frac{1}{n}\sum_{i=1}^{n} \left |E_{i} \right |=\frac{1}{n}\sum_{i=1}^{n} \left |y_{i}-\hat{y_{i}} \right |\]
+討論點估計看E和e。<br>
+對整個預測數列評估時，則要看整體的誤差分佈狀況，然而拿有正負號的絕對誤差E直接相加會有問題。舉例：  
+下午一點預測來客數1600，實際1500，絕對誤差E為-100  
+下午兩點預測來客數1800，實際1900，絕對誤差E為100  
+直接相加為0，無法當作模型評估指標，因此改取絕對值相加後平均，MAE則為100。  
+白話來說就是，我這個預測模型平均會有差不多正負100的誤差！
+但事實上取絕對值的方法在統計上不常用。
+
+註：error和deviation的含義是一樣的，所以Mean Absolute Error也可稱做Mean Absolute Deviation(MAD)，其他指標同理。
+
+## 平均百分相對誤差(Mean Percentage Error, MPE)
+\[MPE=\frac{100%}{n}\sum_{i=1}^{n} e_{i} =\frac{1}{n}\sum_{i=1}^{n} \frac{y_{i}-\hat{y_{i}}}{y_{i}}\]
+
+
+## 平均絕對百分誤差(MAPE, Mean Absolute Percentage Error)
+\[MAPE=\frac{100}{n}\sum_{i=1}^{n} \left |e_{i} \right |=\frac{100}{n}\sum_{i=1}^{n} \left|\frac{y_{i}-\hat{y_{i}}}{y_{i}}\right|\]
+是取相對誤差(e)絕對值之和的平均值，大致可感受偏差的平均程度。<br>
+是經常被拿來使用的數值評估指標，一般來說MAPE < 10%的模型為可接受的。<br>
+但有一點需要非常注意，若實際值出現0，會使得e變無窮大，為了避免這個 bug，MAPE一般用於實際值不會為0的情形。
+
+## 均方誤差(Mean Squared Error, MSE)
+\[MSE=\frac{1}{n}\sum_{i=1}^{n} E_{i}^{2} =\frac{1}{n}\sum_{i=1}^{n} (y_{i}-\hat{y_{i}})^{2}\]
+
+跟平均誤差類似，但平方除了可以避開正負不能相加的問題，還可以放大誤差的作用。
+用這個例子感受一下差別：
+```{r MSE example}
+diff=c(1,-2,1,-4,100)
+MAE_diff=mean(abs(diff));MAE_diff
+MSE_diff=mean(diff^2);MSE_diff
+```
+
+## 正歸化均方誤差(Normalized Mean Squared Error, NMSE)
+先看熟悉的離均差平方合sum of square \(SS_{t}= \sum_{i=1}^{n} (y_{i}-\bar{y})^{2}\) <br>
+\(SS_{t}\)是用來分析原始資料的離散程度。
+我們將\(MSE/SS_{t}\)得到正歸化後的NMSE：
+\[NMSE=\frac{SS_{e}}{SS_{t}}=\frac{\sum_{i=1}^{n} (y_{i}-\hat{y_{i}})^{2} }{\sum_{i=1}^{n} (y_{i}-\bar{y})^{2} }\]
+原本的MSE還帶著單位平方，正歸化後較適合比較。<br>
+NMSE的值超過1時，表示模型很糟糕，越小越好。
+
+## 均方根誤差（Root Mean Squared Error, RMSE)
+簡單來說就是對MSE開根號，表示預測值與真實值的平均偏離程度，仔細看就會發現算法跟標準差有雷同概念
+\[RMSE=\sqrt{\frac{1}{n}\sum_{i=1}^{n} {E_{i}}^{2}}=\sqrt{\frac{1}{n}\sum_{i=1}^{n}(y_{i}-\hat{y_{i}})^{2}}\]
+
+## 平均均方對數誤差(Mean Squared Logarithmic Error, MSLE)
+\[MSLE=\frac{1}{n}\sum_{i=1}^{n}\left ( ln(1+y_{i})-ln(1+\hat{y_{i}})\right)^{2}\]
+
+## 希爾不等係數(Theil inequality coefficient, TIC)
+\[TIC=\frac{\sqrt{\frac{1}{n}\sum_{i=1}^{n}(y_{i}-\hat{y_{i}})^{2}}}{\sqrt{\frac{1}{n}\sum_{i=1}^{n}y_{i}^{2}}+\sqrt{\frac{1}{n}\sum_{i=1}^{n}\hat{y_{i}}^{2}}}\]
+
+其值介於0到1之間，越小預測效果越好。<br>
+
+***
+看到這裡是不是頭暈了呢？其實還有許多衍伸變化，不過皆大同小異概念雷同。<br>
+太多公式無法記住全部沒關係，重點是這些指標都是值越小表示模型越好！<br>
+眾多模型比較時，只要選定適合的，即可開始比較各模型的驗證指標(validation index)。<br>
+其中RMSE請一定要記得！
+
+## 判定係數(Coefficient of Determination, R squared)  
+\(R^{2}\)這各位肯定不陌生，另外還有常見的Adjusted\(R^{2}\) <br>
+其為最常用來反映回歸模型解釋力的統計量。使用在很多統計書上都有描述，但千萬要小心一知半解的使用，尤其是把它跟相關係數(coefficient of correlation, r)搞混。<br>
+又稱為「決定係數」或者「擬合度」，亦可理解為誤差百分比(precentage of reduced error, PRE)，反映的是預測值對實際值的解釋程度。<br>
+其值通常介於0-1之間，\(R^{2}\)越接近1，預測值越接近真實值。<br>
+\[R^{2}=1-\frac{SS_{e}}{SS_{t}}=1-\frac{\sum_{i=1}^{n} (y_{i}-\hat{y_{i}})^{2} }{\sum_{i=1}^{n} (y_{i}-\bar{y})^{2} }\]
+<br>
+\(SS_{t}=\sum(y-\bar{y})^{2}\)為總變異量<br>
+\(SS_{e}=\sum(y-\hat{y})^{2}\)為殘差(誤差)變異量<br>
+\(SS_{regression}=\sum(\hat{y}-\bar{y})^{2}\)則是回歸可解釋的變異量<br>
+
+依變數Y的總變異量\(SS_{t}\) 可以拆解成 可被迴歸模型解釋的回歸變異量\(SS_{regression}\)與不可解釋的殘差(誤差)變異量\(SS_{e}\)<br>
+\[SS_{t}=SS_{regression}+SS_{e}\]
+\[\sum(y-\bar{y})^{2}=\sum(y-\hat{y})^{2}+\sum(\hat{y}-\bar{y})^{2}\]
+對於總離差平方和怎麼拆解的，有興趣的我在最下面推導。
+則可用比例的概念來思考，如果總變異量為1，那麼迴歸模型解釋的百分比佔多少，殘差又佔多少？
+\[1=\frac{SS_{regression}}{SS_{t}}+\frac{SS_{e}}{SS_{t}}\]
+
+回歸可解釋的變異量
+\[R^{2}=\frac{SS_{regression}}{SS_{t}}=1-\frac{SS_{e}}{SS_{t}}\]
+
+一般來說，\(R^{2}\)越大，表示模型擬合效果越好。<br> 模型解釋了多少，反映的就是大概有多準，隨著樣本數量的增加，\(R^{2}\)必然增加，無法真正說明準確程度，只能大概定量。
+
+多大的值才代表模型的精度高呢？這個其實沒有統一的標準。但依經驗歸納如下：<br>
+\(R^{2}\)的值大於0.75，表示迴歸模型擬合度很好，迴歸方程的可解釋程度較高，即迴歸方程的精度較高。
+\(R^{2}\)的值在0.5和0.75之間，表示迴歸模型的擬合可以接受，但需要進一步修正迴歸模型。
+\(R^{2}\)的值小於0.5，表示迴歸模型擬合有問題，我們需要調整自變量重新進行迴歸分析。
+
+
+## 校正判定係數（Adjusted R-Square）
+我們做回歸時會增減自變數來調整模型，當加入的自變數越多，\(R^{2}\)會越大，呈現高估的現象。這會顯得迴歸方程擬合效果很好。但實際上可能並非如此，有些自變量與因變量完全不相關，增加這些自變量，並不會提升擬合水平和預測精度，但卻能提高判定係數\(R^{2}\)的值。因此經過自由度的調整，可避免 \(R^{2}\)的膨脹。<br>
+
+對判定係數\(R^{2}\)進行調整採用的方法是，用樣本量n和自變量的個數k去進行調整。
+\[{R_{adjusted}}^{2}=1-\frac{\frac{SS_{e}}{n-k-1}}{\frac{SS_{t}}{n-1}}\]
+
+做一些整理
+\[{R_{adjusted}}^{2}=1-\frac{n-1}{n-k-1}\frac{SS_{e}}{SS_{t}}=1-\frac{n-1}{n-k-1}(1-R^{2})\]
+從公式中可以看出，當加入的自變數個數K越大，會導致後項越大，使\({R_{adjusted}}^{2}\)越小。<br>
+因為(n-1)永遠大於(n-k-1)，所以多元迴歸中，調整後的判定係數\({R_{adjusted}}^{2}\)永遠小於判定係數\(R^{2}\)。<br>
+
+因調整後的判定係數\({R_{adjusted}}^{2}\)較判定係數\(R^{2}\)測算更全面也更準確，所以，在迴歸分析尤其是多元迴歸分析中，我們通常使用調整後的R2對迴歸方程的精度進行測算和評定，以評估迴歸方程的擬合度和迴歸分析預測的效果。
+
+這邊我們用Iris資料集做個示範：
+```{r adjusted r squared}
+#預測Length，放所有變數
+lm.fit <- lm(Sepal.Length~.,data=iris)
+summary(lm.fit)
+
+```
+同判定係數\(R^{2}\)一樣，習慣上在迴歸分析中，會用0.5當作調整後的\({R_{adjusted}}^{2}\)的臨界值，如果調整後的\({R_{adjusted}}^{2}\)小於0.5，則要分析我們所採用和未採用的自變量，調整迴歸方程，重新進行迴歸分析。  
+
+另外，在進行迴歸方程精度評定時，還需注意如果調整後的\({R_{adjusted}}^{2}\)與判定係數\(R^{2}\)存在明顯差異，則意味着所用的自變量不能很好的測算因變量的變化，或者是我們遺漏了一些可用的自變量。<br>
+調整後的\({R_{adjusted}}^{2}\)與判定係數\(R^{2}\)間差距越大，模型的擬合程度越差。
+
+##  R數值評估函數
+已經有些相關的套件如[Metrics](https://www.rdocumentation.org/packages/Metrics/versions/0.1.4)可直接引入。<br>
+這邊也跟大家一起練習手刻，函式都很簡單。<br>
+```{r Metrics}
+#弄一個模擬data
+actual    <- c(1.1, 1.9, 3.0, 4.4, 5.0, 5.6)
+predicted <- c(0.9, 1.8, 2.5, 4.5, 5.0, 6.2)
+
+if (length(actual) != length(predicted)) {
+  print('The legnth of two array is not equal')
+}
+
+#使用Metrics套件
+  #取絕對值後的E
+    aE = ae(actual,predicted)
+  #平均絕對誤差 MAE
+    MAE = mae(actual,predicted)
+  #平均絕對百分誤差 MAPE
+    MAPE = mape(actual,predicted)
+  #均方誤差 MSE
+    MSE = mse(actual, predicted)
+  #均方根誤差 RMSE
+    RMSE = rmse(actual, predicted)
+  #平均均方對數誤差 MSLE
+    MSLE = msle(actual, predicted)
+
+#手刻
+  #絕對誤差 E
+    E = actual-predicted
+  #取絕對值後的E
+    aE  = abs(actual-predicted) #自己寫
+  #相對誤差 e
+    e = (actual-predicted)/actual
+  #平均絕對誤差 MAE
+    MAE = 1/length(actual)*sum(abs(actual-predicted))
+  #平均絕對百分誤差 MAPE
+    MAPE = 1/length(actual)*sum(abs((actual-predicted)/actual))
+  #均方誤差 MSE
+    MSE = 1/length(actual)*sum((actual-predicted)^2)
+  #正規化均方誤差 NMSE
+    NMSE = sum((actual-predicted)^2)/sum((actual-mean(actual))^2)
+  #均方根誤差 RMSE
+    RMSE = sqrt(1/length(actual)*sum((actual-predicted)^2))
+  #平均均方對數誤差 MSLE
+    MSLE = 1/length(actual)*sum((log(1+actual,base=exp(1))-log(1+predicted,base=exp(1)))^2)
+
+  #R Squared
+    R_squared = 1-sum((actual-predicted)^2)/sum((actual-mean(actual))^2)
+```
+
+實務上在R中我們不會去看這麼多指標，慣用的是直接用summary去檢討回歸模型。
+Residual standard error即為殘差項的RMSE。
+
+## 迴歸分析的假設檢定
+### R squared的顯著性檢定
+前面已經說明了迴歸模型的變異數拆解原理。<br>
+其中有個問題，當\(R^{2}\)很高時，是否就代表模型很好！？
+其實不然，若要說\(R^{2}\)具統計意義，還得通過顯著性檢定。
+
+### F Test
+我們在前面討論均方誤差時，其實簡化了自由度的討論。<br>
+實際上n的位置應代入自由度\(df\)<br>
+公式修正如下：
+\[MSE=\frac{1}{df_{e}}\sum_{i=1}^{n} E_{i}^{2} =\frac{1}{df_{e}}\sum_{i=1}^{n} (y_{i}-\hat{y_{i}})^{2}\]
+而針對回歸值，也可以計算回歸效果變異數：
+\[MSRegression=\frac{1}{df_{Reg}}\sum_{i=1}^{n} (\hat{y_{i}}-\bar{y})^{2}\]
+
+這兩個變異數的比值可以透過F檢定進行顯著性考驗。
+此時\(H_{0}\)表示，「回歸可解釋變異量為0」，如果無法推翻，即使\(R^{2}\)再高，也沒有統計上的意義。<br>
+F檢定探討迴歸模型中的迴歸係數β（就是各因子的權重）是否全部為0。當係數不全為0時，迴歸模型才具有預測力。<br>
+虛無假說(Null hypothesis)：\(H_{0}：\beta_{1}=\beta_{2}=...=\beta_{p}=0 \)<br>
+對立假說(alternative hypothesis)：\(H_{0}：\beta_{1},\beta_{2},...,\beta_{p}\neq 0 \)<br>
+F檢定量的統計值(Statistics)：
+\[F=\frac{MSRegression}{MSE}=\frac{\frac{SS_{reg}}{df_{reg}}}{\frac{SS_{e}}{df_{e}}}=\frac{\frac{SS_{reg}}{p}}{\frac{SS_{e}}{N-P-1}}\]
+
+![R變異量分析表](.\pics\R variation analysis table.png)
+
+可以對應到下方R Summary的結果。<br>
+## R 中 Linear Model Summary 的各項含意
+![R summary解釋](.\pics\r summary explaination.png)
+
+
+## 迴歸分析的基本假設
+當我們建立出一個線性回歸時，必須要確認其殘差(residual)是否符合下面三個假設：<br>
+- 常態性(Normality)<br>
+- 獨立性(Independence)<br>
+- 變異數同質性；等分散性(Homogeneity of Variance)<br>
+
+我們先從回歸模型中找到殘差的值，這邊延續上面iris的model介紹。<br>
+```{r residual plot}
+names(lm.fit) #可以看model內有甚麼參數
+plot(lm.fit$fitted.values,lm.fit$residuals ,main="Residual plot")
+```
+
+### 常態性假設
+`shapiro.test()`函式可以用來檢驗殘差的常態性：
+```{r residual normality test}
+shapiro.test(lm.fit$residuals)
+```
+由於**虛無假設H0**:殘差服從常態分配，因為p-value > 0.05，代表不會拒絕H0，也就是殘差符合常態分布！
+
+### 獨立性假設
+要檢驗殘差的獨立性，可用套件car中的`durbinWatsonTest()`函式：
+```{r residual independence test}
+car::durbinWatsonTest(lm.fit) #注意，這裡放的是模型本身，函式會自動抓殘差欄位
+```
+由於**虛無假設H0**:殘差間相互獨立，因p-value > 0.05，代表不會拒絕H0，也就是殘差無自相關。
+殘差自相關現象在時間序列分析較常發生。
+其實殘差自相關仍可繼續分析，只是殘差變異量可能產生偏誤，進而影響到\(R^{2}\)導致迴歸模型被拒絕。
+
+### 同質性(等分散性)假設
+要檢驗殘差的變異數同質性，同樣使用套件car中的`ncvTest()`函式：
+```{r homoscedasticity test}
+car::ncvTest(lm.fit)
+```
+由於虛無假設H0:殘差變異數具有同質性，因p-value < 0.05，代表拒絕H0。 <br>
+
+![Residual homoscedasticity](.\pics\residual dist.png)<br>
+
+我們用一元的線性回歸圖來解釋：<br>
+圖上X是自變數，Y是依變數。<br>
+殘差不應該隨著X而有所不同，理想上如同圖a，誤差有等分散性。<br>
+但如果在不同的X有不相等的殘差變異量(此即誤差變異歧異性heteroscedasticity)，如圖b，此時表示對Y的預測而言，可能還需其他自變數來解釋。
+另外，當研究數據具有值端值存在或非線性關係時，非同質性的現象也容易出現。
+
+
+推薦參考: [r-bloggers](https://www.r-bloggers.com/how-to-detect-heteroscedasticity-and-rectify-it/)
+
+
+## 補充：誤差(Error)與殘差(Residual)
+誤差與殘差，這兩個概念在某程度上具有很大的相似性，都是衡量不確定性的指標，可是兩者又存在區別。普遍上是蠻常被混著使用的。<br>
+
+簡單理解為：<br>
+誤差\(\varepsilon_{i}=y_{i}-E\{y_{i}\}\)為 觀測值與 真實回歸線之離差，但是真實迴歸線是未知的。<br>
+殘差\(e_{i}=y_{i}-\hat{y_{i}}\)為 觀測值與所估計出之迴歸線上的擬合值的偏離，所以是已知的。<br>
+
+誤差是指樣本對母體(無法觀察到的)均值及真實值的均值的偏離。<br>
+殘差則是指樣本和觀察值(樣本總體)或回歸值(預測值)的差異量。<br>
+
+誤差與測量有關，誤差大小可以衡量測量的準確性，誤差越大則表示測量越不準確。<br>
+(1)誤差分為兩類：系統誤差與隨機誤差。<br>
+　　①系統誤差與測量方案有關，通過改進測量方案可以避免系統誤差。<br>
+　　②隨機誤差與觀測者，測量工具，被觀測物體的性質有關，只能儘量減小，卻不能避免。<br>
+(2)殘差與預測有關，殘差大小可以衡量預測的準確性。殘差越大表示預測越不準確。殘差與資料本身的分佈特性，回歸方程的選擇有關。
+
+## 補充：總離差平方和推導
+\(y_{i}\)代表真實值；\(\bar{y}\)平均值；\(\hat{y_{i}}\)代表預測值；
+\(i\in[1,n]\)<br>
+\[(y_{i}-\bar{y})=(y_{i}-\hat{y_{i}})+(\hat{y_{i}}-\bar{y})\]
+將兩邊平方並加總
+\[\sum_{i=1}^{n} (y_{i}-\bar{y})^{2}=\sum_{i=1}^{n} (y_{i}-\hat{y_{i}})^{2}+\sum_{i=1}^{n} (\hat{y_{i}}-\bar{y})^{2}+\sum_{i=1}^{n}2(y_{i}-\hat{y_{i}})(\hat{y_{i}}-\bar{y})\]
+之後我們來證明
+\[\sum_{i=1}^{n}2(y_{i}-\hat{y_{i}})(\hat{y_{i}}-\bar{y})=0\]
+就可以讓
+\[SS_{t}=SS_{regression}+SS_{e}\]
+
+以簡單回歸（一個自變數\(x_{i}\)）的狀況當作例子：
+\[\hat{y_{i}}=\hat{a}+\hat{b}x_{i}\]
+\[\bar{y}=\hat{a}+\hat{b}\bar{x}\]
+而回歸模型中，斜率
+\[\hat{b}=\frac{cov(x,y)}{s^2}=\frac{\sum_{i=1}^{n}(x_{i}-\bar{x})(y_{i}-\bar{y})}{\sum_{i=1}^{n}(x_{i}-\bar{x})^2}\]
+因此，
+\[\hat{y_{i}}-\bar{y}=\hat{b}(x_{i}-\bar{x})\]
+\[y_{i}-\hat{y_{i}}=(y_{i}-\bar{y})-(\hat{y_{i}}-\bar{y})=(y_{i}-\bar{y})-\hat{b}(x_{i}-\bar{x})\]
+所以，
+\[\sum_{i=1}^{n}2(y_{i}-\hat{y_{i}})(\hat{y_{i}}-\bar{y})=2\hat{b}\sum_{i=1}^{n}(y_{i}-\hat{y_{i}})(x_{i}-\bar{x})\]
+\[=2\hat{b}\sum_{i=1}^{n}((y_{i}-\bar{y})-\hat{b}(x_{i}-\bar{x}))(x_{i}-\bar{x_{i}})\]
+\[=2\hat{b}\sum_{i=1}^{n}((y_{i}-\bar{y})(x_{i}-\bar{x})-\hat{b}(x_{i}-\bar{x})^2)\]
+\[=2\hat{b}\sum_{i=1}^{n}((y_{i}-\bar{y})(x_{i}-\bar{x})-\frac{\sum_{i=1}^{n}(x_{i}-\bar{x})(y_{i}-\bar{y})}{\sum_{i=1}^{n}(x_{i}-\bar{x})^2}(x_{i}-\bar{x})^2)\]
+\[=2\hat{b}(0)=0\]
+
+```{r prove sst}
+#這邊簡單驗證一下
+y <- sort(round(runif(10,min=0,max=50)))
+x <- 1:10
+x_mean <- mean(x)
+y_mean <- mean(y)
+b_hat <-  sum((x-x_mean)*(y-y_mean))/sum((x-x_mean)^2) ;b_hat #斜率
+a_hat <-  y_mean-b_hat*x_mean; a_hat #截距
+lm(y~x)
+y_estimate <- a_hat+b_hat*x
+#SST=SSreg+SSe
+sum((y-y_mean)^2)==sum((y_estimate-y_mean)^2)+sum((y-y_estimate)^2)
+
+```
+
+***
+越寫越滿了，原本沒要寫這麼多的！邊寫邊訓練腦袋
+
+資料參考：<br>
+[Skydome資料分析筆記](https://rpubs.com/skydome20/R-Note5-First_Practice)<br>
+[Tommy線性回歸](https://medium.com/@chih.sheng.huang821/%E7%B7%9A%E6%80%A7%E5%9B%9E%E6%AD%B8-linear-regression-3a271a7453e)
+
+如果內容有任何問題或錯誤，歡迎來信跟我聯絡唷！ 
+ivan0628@gmail.com

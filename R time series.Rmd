@@ -1,0 +1,334 @@
+---
+title: "R 時間序列分析（一）"
+author: "Ivan Lin"
+date: "2020年4月18日"
+output: 
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+---
+
+
+```{r setup, include=FALSE}
+#這段並不會show出來
+knitr::opts_chunk$set(echo = TRUE)
+#install.packages("forecast")
+#install.packages("kableExtra")
+require(forecast)
+require(tseries)
+require(kableExtra)
+require(tidyverse)
+require(car)
+knitr::opts_chunk$set(echo = TRUE)
+options(knitr.table.format = "html") 
+```
+# 時間序列
+時間序列，是我們周邊時常出現的數據型態，例如：每天的最高溫變化、遊樂園各小時來客數、機台的每日不良率、股價...等。  
+基本邏輯來說，當數據有隨著時間變化的趨勢，就是時間序列，甚至不一定是跟著時間，基本上只要資料有前後相關性、週期變化現象，就可以用時序的方式處理，適合只有一個維度的簡單型資料。    
+  
+## 時間序列ts()介紹
+這裡先介紹R中內建時間序列的物件格式 Time series。  
+我們來自己建立一組時間序列的資料，`ts()`建立，使用格式如下：  
+`ts(data,frequency=12,start=c(year,month))`  
+其中gm表示時間數據，frequency表示時間的單位(進位法)，例如季：4進位、月：12進位、小時：24、日：365...  
+
+這邊看一下官方文件  
+frequency: the number of observations per unit of time.  
+The value of argument frequency is used when the series is sampled an integral number of times in each unit time interval. For example, one could use a value of 7 for frequency when the data are sampled daily, and the natural time period is a week, or 12 when the data are sampled monthly and the natural time period is a year. Values of 4 and 12 are assumed in (e.g.) print methods to imply a quarterly and monthly series respectively.
+  
+start則表示時間序列開始的時間  
+  
+例如：我們自訂一個模擬一個辦公室7月份一周的室溫資料，儀器紀錄時間是小時，並且來計算看看acf偏相關分析  
+```{r temperature}  
+temp_office <- ts(rnorm(24*7,mean=30,sd=3),frequency=1,start=c(1,1)) ;head(temp_office,20)
+acf(temp_office, plot=T) 
+```
+  
+`acf()`稍後就會介紹，這邊為了方便觀察資料隨著小時的自相關性，我直接將frequency設定為1，這樣acf的lag值較直覺（lag=1對應frquency一個週期）。  
+因為溫度是隨機產生的，因此看不到相關係數高的遲滯係數(lag)。  
+
+
+## 時間序列觀察
+  
+接下來正是進入本次練習，我們採用forecast套件包`require(forecast)`裡面的內建資料集wineind，該資料是從1980年01月到1994年08月，是葡萄酒商紀錄紅酒銷售的總量。另外在未來的文章也會用`forecast`套件包中的函式進行建模。     
+
+首先透過 `str()` 可以了解到這組資料是時間序列的資料。    
+```{r str}
+str(wineind);wineind;summary(wineind)
+```
+
+
+我們可以用`start()`及`end()`取出時間序列的開始和結束。  
+```{r ts start() end()}
+start(wineind);end(wineind);
+end(wineind)[1] #年分
+end(wineind)[2] #月份
+```
+另外可以用`window()`來取出某一區間的資料。
+```{r window}
+window(wineind,1990,end(wineind)) #抓1990之後的資料
+
+```
+用`time()`取出時間欄位，這裡借用zoo函式庫幫我們轉換時間；另外可以用`cycle()`取出月份（精準地說應該是看你的時間序列週期單位）。
+```{r time}
+time(wineind) %>% zoo::as.yearmon() %>% head()
+#單單取出年分
+x <- zoo::as.yearmon(time(wineind)) %>% format.Date("%Y") ;head(x)
+#取出月份
+m <- cycle(wineind) ; head(m)
+```
+
+###折線圖   
+接下來我們來觀察時序圖。
+```{r plot wineind}
+plot.ts(wineind) #用折線圖看銷售量時間序列
+```
+觀察可發現，我們的數據具有週期性變化，且隱約有長期增長的趨勢，並非一直維持在某一個常數上下波動，初步先判斷該序列爲非定態時間序列。  
+舉例來說，像股票大盤指數的價格會上下震盪，但是長期來看逐漸上升，這也是一種非定態時間序列。  
+而定態又可分為弱定態與嚴格定態等。  
+定態或非定態會影響我們對於一組數據的判斷，衡量到底這時間序列是否是可預測的。   
+
+###ADF檢定   
+這時候我們可以先用一個常見的ADF檢定（Augmented Dickey-Fuller test）來驗證是否為定態。  
+引入tseries包中的`adf.test()`函數進行單位根檢驗  
+  
+``` {r adf test}
+adf.test(wineind,k=0)
+```
+但結果顯示P值爲0.01<0.05，接受H1假設，檢測認爲該序列為定態(stationary)。  
+不過我們從觀察中認為數據有長期趨勢，故稍後還是可以嘗試當作為非定態數據進行差分處理。  
+這樣對我們之後要使用自相關與偏相關分析圖來判斷該用甚麼預測模型(AR,MA,ARIMA)時，可能會有所幫助。  
+   
+推薦參考：  
+[陳旭昇老師-單根與隨機趨勢](http://homepage.ntu.edu.tw/~sschen/Book/Slides/Ch6Unitroot.pdf)  
+[Edward-資料的時間序列性質檢驗](https://medium.com/r-%E8%AA%9E%E8%A8%80%E8%87%AA%E5%AD%B8%E7%B3%BB%E5%88%97/r%E8%AA%9E%E8%A8%80%E8%87%AA%E5%AD%B8%E7%B3%BB%E5%88%97-5-%E8%B3%87%E6%96%99%E7%9A%84%E6%99%82%E9%96%93%E5%BA%8F%E5%88%97%E6%80%A7%E8%B3%AA%E6%AA%A2%E9%A9%97-ebd367421122)
+  
+## 自相關分析與偏相關分析
+同一個時間序列在任意兩個不同時刻的取值之間的相關程度，自相關函式是描述隨機訊號x(t)在任意兩個不同時刻t1，t2的取值之間的相關程度。  
+自己本身的相關係數一定最高為1，因此lag=0時，固定會是1。  
+
+```{r acf wineind}
+plot(wineind) #用折線圖看銷售量時間序列
+acf(wineind,lag.max = 100, plot=T) 
+#lag.max最大遲滯階數，設定前後自相關計算的最大間隔
+#plot預設為T
+#除了相關係數外，還可以計算共變異數及偏自相關係數PCAF 
+#透過設定 type = c("correlation", "covariance", "partial")
+```
+在此使用`acf()`查看wineind的自相關性(Autocorrelation)  
+從圖上來看，往後移動一個距離，相關係數約為0.2  
+直到lag=1時（因為我們時序是12進位的，因此lag=1代表12個月），可看到cor約等於0.8，可預期紅酒的銷售量有12個月的年度循環週期。  
+在此記錄下自相關顯著處，即Pearson相關係數約接近1(高度正相關)或-1(高度負相關)部分。   
+  
+而偏自相關分析PCAF，可以直接使用`pcaf()`直接計算。  
+自相關分析會受到區間的取值影響，而偏相關的計算可以移除這一點，通常偏相關係數會小於對應的自相關係數。  
+  
+在此若想知道相關分析原理，推薦參考：  
+[知乎：自相關與偏相關係數](https://zhuanlan.zhihu.com/p/26525852)  
+[AI Tech yuan：自相關與偏相關係數](http://www.atyun.com/4462.html)  
+  
+我們一開始提到過，若判斷為非定態序列，可先進行差分處理，變成定態序列，這使用ndiffs()函數判斷差分次數。  
+```{r ndiff}
+ndiffs(wineind)
+```
+建議出結果為一階差分，因此我們來試著對函式進行一階差分，並且來畫畫看做完差分後的acf和pacf圖。
+```{r diff wineind}
+winediff<-diff(wineind)
+par(mfrow=c(1,2))
+plot.ts(wineind,main="原始Wineind資料")
+plot.ts(winediff,main="一階差分後的Wineind資料")
+
+par(mfrow=c(1,2))
+acf(wineind);acf(winediff)  #繪製自相關圖
+
+par(mfrow=c(1,2))
+pacf(wineind);pacf(winediff)  #繪製偏自相關圖
+
+```
+
+以上我們看了單一時間序列的自相關分析與偏相關分析。  
+從分析中我們預期wineind資料有年週期性的變化，之後可以納入預測模型的考量。
+接下來的文章再繼續介紹時間序列建模預測的相關處理。
+  
+***
+### 周期製圖比較
+我們在自相關分析中看到以12個月的相關係數蠻高的，另外當1、4、6、8亦有蠻高的相關係數。
+這跟直覺蠻符合的，銷售的淡旺季會有年度變化，如同業界常見年度同期比較；又或者跟前後個月有近似表現（環比），
+也可以是以季、半年的尺度做討論。
+
+這裡先用完整的一個週期（12個月）將同期比較的圖繪出。
+```{r 按月份畫折線圖}
+#按月份畫折線圖
+
+y <- zoo::as.yearmon(time(wineind)) %>% format.Date("%Y") %>% as.numeric() #年分
+m <- zoo::as.yearmon(time(wineind)) %>% format.Date("%m") %>% as.numeric() #月份
+wine_df <- data.frame(sales=as.numeric(wineind),year=y,month=m) #轉換成dataframe
+duration=max(y)-min(y)+1 #計算有多少年，方便用迴圈分年份繪圖
+
+wine_df %>%
+  ggplot( aes(x=month, y=sales, group=year, color=year)) +
+    geom_line()+
+    geom_point()+ 
+    scale_x_continuous(breaks=wine_df$month, labels = wine_df$month)
+
+#另外提供另外的繪圖方法，如果不想換成dataframe來畫的話，這裡參考"實戰R語言預測分析"書中的內容。
+plot(1:12,ylim=range(wineind)+c(-100,100),col='white', xlab="月份", ylab="銷量")
+for(i in 1:duration) {
+points(1:12,wineind[(12*(i-1)+1):(12*i)])
+lines(1:12,wineind[(12*(i-1)+1):(12*i)], lty=2 ,col=hcl.colors(duration)[i]) #用hcl.colors自動生成顏色
+}
+
+```
+從圖上很明顯可以看出來，銷售數據有隨著月份的年週期性變化，而且隨著年份似乎有漸增的趨勢（非定態資料）  
+關於趨勢，我們之後再探討用移動平均Moving Average法來分析。  
+我們也好奇，是不是有跟著季產生的銷售變化，在自相關中4的相關係數蠻高，因此我們修改一下數據框，畫出來比較。
+```{r 按季節畫折線圖}
+#按月份畫折線圖
+q <- zoo::as.yearqtr(time(wineind)) %>% as.character()  #年與季
+qm <- zoo::as.yearmon(time(wineind)) %>% format.Date("%m") %>%  as.numeric()%%4+1  #算出該月是在各季第幾個月
+wine_df <- data.frame(sales=as.numeric(wineind),year=y,month=m,quarter=q,qutermonth=qm) #轉換成dataframe
+
+wine_df %>%
+  ggplot( aes(x=qutermonth, y=sales, group=quarter, color=quarter)) +
+    geom_line()+
+    geom_point()+ 
+    scale_x_continuous(breaks=wine_df$qutermonth, labels = wine_df$qutermonth)
+```
+  
+感覺每季的第一個月都是銷售峰值，圖說明資料也有季變化。
+
+***
+### 一維線性回歸
+其他回歸方法在後續的文章介紹，這裡先一氣呵成的用簡單的線性回歸建模一下吧！  
+我們想用過去的資料來預測未來的銷量，在這裡的例子，就是1981年01月的銷量可以從1980的歷史銷量推算出。
+來整理一下資料
+```{R 整理建模用資料}
+target_ind <-  wineind[13:length(wineind)] #要被預測的銷量，從第二年開始預測
+#用過去1,4,6,8,12個月的值來預測當月份
+dataset <- data.frame(target_ind,month=m[13:length(wineind)])
+column_name <- c()
+for (i in c(1,4,6,8,12)){
+  dataset <-  cbind(dataset,col=wineind[(13-i):(length(wineind)-i)])
+  column_name <- c(column_name,paste0('R',i))
+}
+dataset <- setNames(dataset,c('target_ind','month',column_name))
+```
+  
+整完的`dataset`資料如下：
+```{r data set ,echo=FALSE}
+kable(dataset) %>% 
+  kable_styling() %>%
+  scroll_box(height = "200px")
+```
+  
+畫出散佈圖矩陣：
+```{r plot dataset}
+plot(dataset)
+```
+進階版本的散布矩陣，使用到car套件，自帶線性回歸線
+```{r plot scatter matrix with car}
+scatterplotMatrix(dataset,regLine = list(method=lm, lty=1, lwd=2, col='red') )
+```
+  
+當我們仔細看target_ind與R12的散佈圖時，發現有些明顯的離群值。
+這些離群值會影響建模的效果。
+```{r plot outlier}
+plot(dataset[,c('R12','target_ind')])
+# 畫出回歸趨勢線
+lm.model <- lm(target_ind~R12, dataset)    # 建立一個線性回歸
+abline(lm.model,lwd=2,col='red') 
+```
+  
+### 庫克距離，去除異常值
+我們在簡單線性回歸後看到有離群值，恐影響模型擬合，如果某個觀測值對應的期望值是異常值的話，這樣的值被認爲槓桿值很大。  
+這邊採用庫克距離來衡量異常值。  
+
+庫克距離：  
+當通過計算觀測值的槓桿值之後，發現具有較大槓桿值的那些觀測點，對模型穩定性有“潛在威脅”。  
+此時就可以計算庫克距離衡量一個觀測值對模型的影響大小，白話來說就是比較每個觀測值被移除前後，模型變化。  
+推薦閱讀：  
+[庫克距離](https://wangcc.me/LSHTMlearningnote/section-31.html)  
+```{r cook distance}
+lm.model <- lm(target_ind~R12, dataset) 
+cook <- cooks.distance(lm.model) #計算庫克距離
+head(cook) #看一下cook計算的結果
+plot(cook)
+abline(h=0.10,lty=2,col='red')
+dataset <- dataset[which(cook<0.10),] # remove 高槓桿的異常值
+```
+***  
+## 建立模型
+我們將dataset分成訓練組與測試組，這裡就按照比例，前7成是訓練組，後3成是測試組。
+```{r build model}
+#分離訓練與測試組
+train_size = round(nrow(dataset)*0.7)
+test_size = nrow(dataset)-train_size
+train <- head(dataset,train_size)
+test <- tail(dataset,test_size)
+
+#建立模型
+lm.fit <- lm(target_ind~.,data=train)
+summary(lm.fit)
+```
+- 模型結果可以看出R12與目標變數呈現明顯線性關係，這也是我們一開始自相關時知道的。
+- month呈現顯著，推測原因同上，month及R12此二變數的相依性高。
+- 調整後R平方達到0.85，可以接受。
+- 誤差項(Intercept)P值不顯著。
+- R1及R6的P值都很大，可以考慮剃除。
+```{r 剃除R1及R6}
+#試著剃除R1及R6在一次擬合
+lm.fit <- lm(target_ind~.,data=train[,!(colnames(train) %in% c('R1','R6'))])
+summary(lm.fit)
+```
+剔除後差異不大。
+***
+  
+## 多項式迴歸
+接著我們嘗試使用非線性的方法改善模型，這裡採用多項式方法。
+因為R1和R6明顯不顯著，R12明顯顯著，這裡使用R4、R8兩變數做多項式，嘗試最高為5次。
+```{r polynomial regression}
+lm.fit <- lm(target_ind~ month + R1 + R4 + I(R4^2) + I(R4^3) + I(R4^4) + I(R4^5) 
+           + R6 + R8 + I(R8^2) + I(R8^3) + I(R8^4) + I(R8^5) + R12 ,data=train)
+summary(lm.fit)
+```
+    
+### 逐步回歸
+由於涉及到的變數較多且彼此有相依性，我們用逐步回歸刪除影響較小的變數。
+```{r step regression}
+lm.fit <- step(lm.fit)
+summary(lm.fit)
+```
+我們估且接受這樣的結果。
+lm.fit就是我們建立用於時間序列預測的線性迴歸模型。
+```{r predict}
+test$pred <- predict(lm.fit,test)
+#計算百分誤差率
+test$diff <- abs(test$target_ind-test$pred)/test$target_ind
+```
+觀察預測結果
+```{r show predict}
+kable(test) %>% kable_styling() %>% scroll_box(height = "200px")
+summary(test)
+```
+從結果可以看到最大百分誤差率為31.9%，平均誤差為7%，整體預測結果不錯。
+
+推薦閱讀：  
+[Edward - 迴歸模型介紹](https://medium.com/r-%E8%AA%9E%E8%A8%80%E8%87%AA%E5%AD%B8%E7%B3%BB%E5%88%97/r%E8%AA%9E%E8%A8%80%E8%87%AA%E5%AD%B8%E6%97%A5%E8%A8%98-9-%E8%BF%B4%E6%AD%B8%E6%A8%A1%E5%9E%8B%E4%BB%8B%E7%B4%B9-a49f81d81eab)  
+
+本篇文章按照游皓麟老師的[實戰R語言預測分析](https://www.tenlong.com.tw/products/9789572246511)介紹進行實作，含金量相當高的好書。
+
+## 時序思考題：內建資料集Airmiles
+
+各位有興趣可以再用R內建的資料集 airmiles 思考看看，跟本文的範例有哪些特性相同或相異之處？  
+這個資料集是美國某航空公司的全年飛機里程資料。  
+
+```{r acf airmiles}
+airmiles;summary(airmiles)
+plot(airmiles) #先看一下折線圖
+acf(airmiles) #自相關
+```
+
+```{r pacf airmiles}
+pacf(airmiles) #偏相關
+```
+
