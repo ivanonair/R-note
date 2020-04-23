@@ -282,6 +282,7 @@ F檢定量的統計值(Statistics)：
 ```{r residual plot}
 names(lm.fit) #可以看model內有甚麼參數
 plot(lm.fit$fitted.values,lm.fit$residuals ,main="Residual plot")
+hist(lm.fit$residuals)#殘差的分布情況
 ```
 
 ### 常態性假設
@@ -315,8 +316,31 @@ car::ncvTest(lm.fit)
 但如果在不同的X有不相等的殘差變異量(此即誤差變異歧異性heteroscedasticity)，如圖b，此時表示對Y的預測而言，可能還需其他自變數來解釋。
 另外，當研究數據具有值端值存在或非線性關係時，非同質性的現象也容易出現。
 
-
 推薦參考: [r-bloggers](https://www.r-bloggers.com/how-to-detect-heteroscedasticity-and-rectify-it/)
+
+## ASD (A Standard Deviation)累計圖
+檢查完這些假設後，還可以用殘差來製作ASD累計圖，概念跟上方的殘差分布圖很類似。<br>
+因預估值的尺度不同，分析後不同的預測模型殘差尺度差異會讓分析者覺得缺乏一致性。<br>
+舉例來說，預測身高和預測花瓣長度，尺度不同，殘差次數分布圖上X軸的單位也不相同，如下：<br>
+
+```{r std deviation explain, echo = FALSE}
+hieght_residual <- rnorm(100, mean = 10, sd = 5)
+par(mfrow=c(1,2))
+hist(hieght_residual,main="Height residual")
+hist(lm.fit$residuals,main="Sepal Length residual")
+```
+
+我們可以使用標準差將這張圖標準化，變成累計分布圖(Cumulative Distribution Function)來比較。<br>
+如果各位還記得機率分布，這就跟累積分布函數的計算如出一轍！因此我們也借用R中cdf的function來畫圖。<br>
+作法：將每個殘差除以真實值\(y\)的標準差，取絕對值，並且畫累積分布圖。<br>
+```{r ASD chart}
+std <- sd(iris$Sepal.Length) #真實值y的標準差
+plot(ecdf(abs(lm.fit$residuals/std)),main="ASD chart",xlab="Residual/STD",ylab="Cumulative distrubtion",col="darkblue")
+```
+<br>
+當取線可以越往左偏，曲線下面積越大，表示殘差越小！<br>
+最好的情況是，在X軸上從0往右，曲線能快速拉升，表示大部分的殘差都在很小的標準差範圍內，表示模型極好。<br>
+然而，如果預測中有殘差較大的（已經大於一倍標準差的情況），那麼曲線將不能再一倍標準差的範圍內達到100%。<br>
 
 
 ## 補充：誤差(Error)與殘差(Residual)
