@@ -15,6 +15,7 @@ require(car)
 require(tidyverse)
 require(prettydoc)
 require(Metrics)
+require(ROCR)
 knitr::opts_chunk$set(echo = TRUE)
 options(knitr.table.format = "html") 
 ```
@@ -70,7 +71,7 @@ options(knitr.table.format = "html")
 但對於我們在訓練模型時，更在意FP和FN，因為專注於改善錯誤，更有助於調整模型。
 
 FN和FP又被稱為一型錯誤；假警報(ɑ錯誤)和二型錯誤：錯過真相(β錯誤)。<br>
-一型錯誤指的是是被發現的目標壓根不是需要被關注的對象；二型錯誤二型錯誤則相反，感興趣的目標未被發現。
+一型錯誤指的是被發現的目標壓根不是需要被關注的對象；二型錯誤則相反，感興趣的目標未被發現。
 
 透過混淆矩陣，我們很方便計算以下評估指標：<br>
 
@@ -160,17 +161,21 @@ FN和FP又被稱為一型錯誤；假警報(ɑ錯誤)和二型錯誤：錯過真
 對模型而言，當然希望精準度與召回率都越高越好，但是兩者卻彼此消長，提高P的同時可能導致R降低，這就是魚與熊掌的難題。<br>
 ![精準度Precision與召回率Recall](.\pics\PandR.jpg)
 
-故要調教模型時便須有所取捨，這時候該怎麼抉擇呢？通常這當中有一個平衡點，這裡F值就派上用場了！
+故要調較模型時便須有所取捨，這時候該怎麼抉擇呢？通常這當中有一個平衡點，這裡F值就派上用場了！
 \[F_{\alpha}=\frac{1}{\frac{\alpha}{P}+\frac{1-\alpha}{R}}=\frac{P\cdot R}{\alpha \cdot R+(1-\alpha) \cdot P}\]
+另外，<br>
 \[\frac{1}{F_{\beta}}=\frac{1}{(\beta^{2}+1)} \times (\frac{1}{P} +\frac{\beta^{2}}{R})\]
 \[F_{\beta}=\frac{(\beta^{2}+1)\cdot P\cdot R}{\beta^{2} \cdot P+R}\]
-當\(\alpha=0.5\)或\(\beta=1\)時，就成為常見的F1-Measure了。
+當\(\alpha=0.5\)或\(\beta=1\)時，就成為常見的F1-Measure了，1就是指β。
 \[F_{1}=\frac{2 \cdot P \cdot R}{P+R}\]
 \[F_{1} \in [0,1]\]
-而\(\alpha,\beta\)值代表甚麼呢？這兩值的大小表示召回率對精準度的相對重要程度。<br>
-β=1，召回率的權重=精準度的權重，得到F1<br>
-β>1，召回率的權重>精準度的權重<br>
-β<1，召回率的權重<精準度的權重<br>
+而這裡的\(\alpha,\beta\)值代表甚麼呢？這兩值的大小表示召回率對精準度的相對重要程度。<br>
+[Wiki](https://en.wikipedia.org/wiki/F1_score)<br>
+β=1，召回率的權重=精準度的權重，得到F1；<br>
+β>1，召回率的權重>精準度的權重；<br>
+β<1，召回率的權重<精準度的權重。<br>
+所以常用的還有\(F_{0.5}\)、\(F_{2}\)。<br>
+
 當\(F_{1}\)接近1時表示模型好，反正靠近0時則不好。
 但麻煩的問題又來了，如果你有兩個模型A與B<br>
 A的精準度為90%，召回率為80%<br>
@@ -199,27 +204,58 @@ B的精準度為80%，召回率為90%<br>
 以下要介紹的圖表有ROC曲線、KS曲線、累計收益圖、累計提升圖、累計回應圖。
 
 ## ROC曲線
-ROC全名，Receiver Operating Characteristic，不用記中文名字了沒幫助的。
+ROC全名，Receiver Operating Characteristic，不需要記中文名字！沒人記得住的XDD。
 以下引用[以斯帖統計顧問](https://estat.pixnet.net/blog/post/61795603-roc%E6%9B%B2%E7%B7%9A-(receiver-operating-characteristic-curve))的描述如下：<br>
 
 >ROC曲線是以圖像的方式呈現二分類系統(binary classifier system)在特定的分類或閾值(discrimination threshold)下的表現。圖形的縱軸(y-axis)為真陽性率(true positive rate; TPR)，又稱為敏感度(sensitivity)；橫軸(x-axis)為偽陽性率(false-posiitive rate; FPR)，以1 – 特異度(specificity)表示，而敏感度為將結果正確判斷為陽性的機率，特異度係將結果正確判斷為負向或陰性的機率。
->當指定一個分界點(cut-point)來區分檢驗的陽性與陰性時，這個分界點會影響到診斷工具的敏感度(sensitivity)及特異度(specificity)。
+當指定一個分界點(cut-point)來區分檢驗的陽性與陰性時，這個分界點會影響到診斷工具的敏感度(sensitivity)及特異度(specificity)。
 
-這個分界點其實就是門檻值，舉例來說，如果今天模型預測降雨機率是68%，那麼該歸類為是陽性"雨天"，還是陰性＂晴天"呢？就看歸類為陽性的門檻值設定為多少，可想而知，當門檻值設定高時，FP會下降，但是FN會上升，而調低門檻值的話則相反。
+這個分界點其實就是門檻值，舉例來說，如果今天模型預測降雨機率是68%，那麼該歸類為"雨天"陽性，還是＂晴天"陰性呢？就看歸類為陽性的門檻值設定為多少，可想而知，當門檻值設定高時，FP會下降，但是FN會上升，而調低門檻值的話則相反。
 
 ![分類結果](.\pics\classfication result.jpg)<br>
 
-那麼如何繪製ROC曲線呢？ROC曲線是由一系列 (FPR, TPR)點構成的，但一個特定的模型，只會有一個分類結果，即只有一組 (FPR, TPR)，對應ROC曲線上的一個點，那一條線是怎麼出來的呢？<br>
+那麼如何繪製ROC曲線呢？ROC曲線是由一系列 (FPR, TPR)點構成的，但一個特定的模型，只會有一個分類結果，即只有一組 (FPR, TPR)，對應ROC曲線上的一個點，那一條線是怎麼連出來的呢？<br>
 \(TPR=\frac{TP}{TP+FN}\)；\(FPR=\frac{FP}{FP+TN}\)，可一邊參照上圖了解門檻值改變對TPR,FPR的影響<br>
 ![ROCcurve](.\pics\ROCcurves.png)<br>
 圖片來自維基百科
 
-模型對所有樣本分別計算出預測為陽性的機率，我們把這些值算出來後降序排列，依次將機率值作為門檻值，以此可以計算該閾值下，模型預測結果為正類、負類的樣本數，然後生成一組 (FPR, TPR)值，這樣就可以得到ROC曲線上的一點，最後將所有的點連接起來就出現了ROC曲線。<br>
+模型對所有樣本分別計算出預測為陽性的機率，我們把這些值算出來後從小至大排列，依次將其當作門檻值，以此可以計算該閾值下，模型預測結果為正類、負類的樣本數，然後生成一組 (FPR, TPR)值，這樣就可以得到ROC曲線上的一點，最後將所有的點連接起來就出現了ROC曲線。<br>
 當閾值設置的次數越多，就會生成更多的 (FPR, TPR)值，畫出的ROC曲線也就越光滑。也就是說ROC曲線的光滑程度與閾值設置多少次相關。
 
-ROC曲線越靠近左上角，表示效果越好。左上角座標為（0,1），即 FPR = 0，TPR = 1，這意味著 FP（假陽性）=0，FN（假陰性）=0，這就是一個完美的模型，因為能夠對所有的樣本正確分類。ROC曲線中的對角線（y=x）上的所有的點都表示模型的區分能力與亂猜就沒有差別。
+ROC曲線越靠近左上角，表示效果越好。左上角座標為（0,1），即 FPR = 0，TPR = 1，這意味著FP（假陽性）=0，FN（假陰性）=0，這就是一個完美的模型，因為能夠對所有的樣本正確分類。<br>
+ROC曲線中的對角線（y=x）上的所有的點都表示模型的區分能力與亂猜就沒有差別。<br>
 
+### AUC值
 
+上述的判斷概念可以用面積量化，並拿來評估模型好壞，我們計算Area under the ROC curve，也就是俗稱的AUC值。在二元分類裡面，重點就是模型有沒有辦法有效的把兩類去分開來。<br>
+![AUC對照圖](.\pics\auc.png) <br>
+圖片來源
+[Finding Donors: Classification Project With PySpark](https://towardsdatascience.com/finding-donors-classification-project-with-pyspark-485fb3c94e5e?gi=58ce2f9b512f)
+
+AUC值介於0-1之間，這裡給個經驗準則：
+
+|  AUC值   | 模型效果 |
+|:----:|:----:|
+|   AUC = 1  | 完美 |
+| 1 > AUC ≧ 0.9  | 棒 |
+| 0.9 > AUC ≧ 0.7  | 良好 |
+| 0.7 > AUC ≧ 0.5  | 差強人意 |
+| AUC = 0.5  | 等同亂猜 |
+| AUC < 0.5  | 是否為負指標 |
+
+接下來，我們來在R中Demo ROC曲線與AUC值，使用現成的套件ROCR。
+ROCR套件中有可用於Demo的資料集
+```{r ROC curve}
+#install.packages('ROCR')
+#require(ROCR)
+data(ROCR.simple);ROCR.simple
+pred <- ROCR::prediction(ROCR.simple$predictions, ROCR.simple$labels) 
+perf <- performance(pred,"tpr","fpr")
+plot(perf,colorize=TRUE)
+#算AUC值
+auc <- performance(pred,'auc')
+auc=unlist(slot(auc,"y.values"));auc
+```
 
 ***
 參考資料：<br>
