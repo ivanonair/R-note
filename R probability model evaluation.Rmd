@@ -265,13 +265,12 @@ plot(perf,colorize=TRUE,main=paste0("ROC Curve , AUC = ",round(auc,2)));abline(0
 接下來有個跟ROC曲線類似的圖，其基於Kolmogorov-Smirnov兩樣本檢驗的邏輯設計。<br>
 我們已經熟悉了ROC曲線怎麼畫了，接下來了解KS曲線與KS值就很容易。<br>
 ROC曲線中，橫軸是假正率FPR，縱軸是真正率TPR，線上每一點是不同門檻值對應到的（FPR,TPR）組合。而KS曲線中，我們把假正率也拉到縱軸，獨立變成另一條曲線，縱軸就是兩個值的累積分布函數，而原本的橫軸則為門檻值（預測為正的機率值）。整張圖詮釋預測機率從小到大，正率與負率的變動，計算兩條曲線的差值取最大的作為KS值。<br>
-KS值越大，表示模型能夠將正、負分類分開的程度越大。KS值的範圍是[0，1] 。
 
-由於KS值能找出模型中差異最大的一個門檻值，因此適合用來找門檻值cut_off。但是ks值只能反映出哪個門檻值是區分最大的，而不能總體反映出總體模型的分類效果，這點AUC值更能勝任。
-如果模型中採用的Feature不佳，沒辦法有效分類樣本，那麼AUC值就會很低，不管門檻值怎麼調都不會好。
-KS值表示模型將正樣本和負樣本區分開來的最大分類能力。值越大，模型的預測準確性越好。一般，KS值大於0.2時，即可認為模型預測準確性達到可用要求。一般模型KS值介於0.2到0.6之間，很難超過0.6。
+KS值是模型將正樣本和負樣本區分開來的最大分類能力。KS值越大，表示模型能夠將正、負分類分開的程度越大，模型的預測準確性越好。KS值的範圍是[0，1]。KS值大於0.2時，即可認為模型預測準確性達到可用要求。一般模型KS值介於0.2到0.6之間，很難超過0.6。<br>
 
-承接ROC圖，這裡繼續使用ROCR包繪圖
+由於KS值能找出模型中差異最大的一個門檻值，因此也適合用來找門檻值cut_off。但是ks值只能反映出哪個門檻值是區分最大的，較不能總體反映出總體模型的分類效果，這點AUC值更能勝任。不過單單比較兩個模型的KS值，也仍然能當作分類能力的參考。如果模型中採用的Feature不佳，沒辦法有效分類樣本，那麼AUC值就會很低，不管門檻值怎麼調都不會好。<br>
+
+承接ROC圖，這裡繼續使用ROCR包繪圖，這裡首先先以門檻值為底。
 ```{r ks plot}
 perf <- ROCR::performance(pred,"tpr","fpr")
 FPR=attr(perf,'x.values')[[1]]
@@ -298,6 +297,58 @@ plotKS <- ggplot(ks_df)+
         axis.text=element_text(colour="gray35"))
 plotKS
 ```
+我們有另一種方法可以呈現KS值，改以累積百分比橫軸，陽性或陰性的累積佔比為Y軸，這也是較主流的做法。<br>
+解釋如下：<br>
+1. 模型會產出預測為陽性的機率值，我們先將資料已此機率值由大到小排序。<br>
+2. 之後我們從第一筆值開始，由於預測機率很高，我們幾乎可以說他會是陽性。<br>
+在Depth=1時，預測成功的累積佔比會是 \(\frac{1}{Total Positive Sample}\)，同時預測失敗的累積佔比是\(\frac{0}{Total Positive Sample}\)<br>
+之後隨著Depth繼續往後，累積成功佔比和累積失敗佔比會不斷累積而成長。<br>
+
+```{r KS plot2}
+
+ks.plot = function(prediction,label,n=100){
+df <- data.frame(prediction,label) %>% arrange(desc(prediction)) 
+total_positive <- sum(df$label)
+total_negative <- nrow(df)-total_positive
+# n代表將機率區間0-1要等比例分成幾份
+# 如果有超過100個樣本，則切100份，否則，分割數等同於樣本個數
+if(n > nrow(df)){n <- nrow(df)}
+df$rownum <- 1:nrow(df)
+qus <- quantile(1:nrow(df),probs=seq(0,1,1/n)) #把原本的總比數切成n份
+success_prop <- failure_prop <- NULL
+out <- mapply(function(i){
+  sub_df <- df[df$rownum >=1 & df$rownum < ifelse(i==n,qus[i+1]+0.001,qus[i+1]),] #隨著機率遞減
+  success_prop <<-c(success_prop,sum(sub_df$label==1)) #實際為1的累積個數
+  failure_prop <<-c(failure_prop,sum(sub_df$label==0)) #實際為0的累積個數 
+  },1:n)
+success_prop <- success_prop/total_positive
+failure_prop <- failure_prop/total_negative
+ks_df <- data.frame(rownum=1:n,success_prop,failure_prop,KS=success_prop-failure_prop)
+ks_max <- max(ks_df$KS)
+# 繪製曲線
+plotKS <- ggplot()+
+  geom_line(aes(ks_df$rownum,ks_df$success_prop),colour="red2",size=1.2)+
+  geom_line(aes(ks_df$rownum,ks_df$failure_prop),colour="blue3",size=1.2)+
+  geom_line(aes(ks_df$rownum,ks_df$KS),colour="forestgreen",size=1.2)+
+  geom_vline(xintercept=ks_df[ks_df$KS==ks_max,"rownum"],linetype=2,colour="gray",size=0.6)+
+  geom_hline(yintercept=ks_df[ks_df$KS==ks_max,"success_prop"],linetype=2,colour="forestgreen",size=0.6)+
+  geom_hline(yintercept=ks_df[ks_df$KS==ks_max,"failure_prop"],linetype=2,colour="blue3",size=0.6)+
+  geom_hline(yintercept=ks_df[ks_df$KS==ks_max,"KS"],linetype=2,colour="red2",size=0.6)+
+  xlab("Depth")+
+  ylab("Cumulative proportion")+
+  ggtitle(label="KS - Chart")+
+  theme_bw()+
+  theme(plot.title=element_text(colour="gray24",size=12,face="bold"),
+        plot.background = element_rect(fill = "gray90"),
+        axis.title=element_text(size=10),
+        axis.text=element_text(colour="gray35"))
+  return(list(plotKS,ks_max))
+}
+
+ks.plot(ROCR.simple$predictions,ROCR.simple$labels,100)
+
+```
+
 
 ***
 參考資料：<br>
@@ -305,6 +356,7 @@ plotKS
 [ITread](https://www.itread01.com/content/1544662627.html)<br>
 [Tommy大的Medium](https://medium.com/@chih.sheng.huang821/%E6%A9%9F%E5%99%A8%E5%AD%B8%E7%BF%92-%E7%B5%B1%E8%A8%88%E6%96%B9%E6%B3%95-%E6%A8%A1%E5%9E%8B%E8%A9%95%E4%BC%B0-%E9%A9%97%E8%AD%89%E6%8C%87%E6%A8%99-b03825ff0814)<br>
 [Rstudio for ROC curves](https://rviews.rstudio.com/2019/03/01/some-r-packages-for-roc-curves/)<br>
+[Binary Classifier evaluation](https://rpubs.com/riazakhan94/ksroclift)<br>
 
 如果內容有任何問題或錯誤，歡迎來信跟我聯絡唷！ 
 ivan0628@gmail.com
