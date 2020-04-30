@@ -16,6 +16,7 @@ require(tidyverse)
 require(prettydoc)
 require(Metrics)
 require(ROCR)
+require(caret)
 knitr::opts_chunk$set(echo = TRUE)
 options(knitr.table.format = "html") 
 ```
@@ -70,7 +71,8 @@ options(knitr.table.format = "html")
 直覺上，TP與TN可能是大眾直覺關注的地方。因為如果模型有很高的TP和TN值，就表示模型預測的正確性很高。<br>
 但對於我們在訓練模型時，更在意FP和FN，因為專注於改善錯誤，更有助於調整模型。
 
-FN又被稱為一型錯誤；假警報(ɑ錯誤)，FP則為二型錯誤：錯過真相(β錯誤)。<br>
+FN為一型錯誤：假警報(ɑ錯誤)<BR>
+FP則為二型錯誤：錯過真相(β錯誤)。<br>
 一型錯誤指的是被發現的目標壓根不是需要被關注的對象；二型錯誤則相反，感興趣的目標未被發現。
 
 透過混淆矩陣，我們很方便計算以下評估指標：<br>
@@ -87,10 +89,10 @@ FN又被稱為一型錯誤；假警報(ɑ錯誤)，FP則為二型錯誤：錯過
 
 ### 總體錯誤率(Total Error Rate, TER)
 指模型總體預測錯誤的比率，與總體準確率Accrucy和為1。
-\[TER=\frac{FP+FN}{T}=1-Acc\]
+\[TER=\frac{FP+FN}{Total}=1-Acc\]
 流感例子為\(TER=(20+15)/500=0.07\)
 
-***
+*** 
 
 ## 佔預測分類的邊際機率：
 以預測為正或預測為負總數當作分母
@@ -149,7 +151,34 @@ FN又被稱為一型錯誤；假警報(ɑ錯誤)，FP則為二型錯誤：錯過
 
 從這張圖可以很容易計算邊際機率，並能了解各參數彼此消長的情況。<br>
 
+缺點：
 實務上很難單單從一個指標就判定這個模型的好壞，舉例來說，如果我們的模型是要預測廠房跳電的發生，可能一兩年才會發生一次，樣本非常少，這時候模型只要把99%的日子都歸納為陰性，一樣可以得到很高的精準度，但是真正斷電的時候模型也完全無法察覺！這個準確率99%的模型就不是我們想要的。在正負樣本數量不行衡的情況下，單看準確率就有很大的缺陷。<br>
+另外，製表前我們必須設定分類的門檻值，一般先設定為0.5，但實際上哪個值門檻最佳無法單從誤差矩陣直觀選取。
+
+```{r confusion matrix}
+#install.packages('ROCR')
+#require(ROCR)
+
+#用ROCR套件中的範例資料集
+data("ROCR.simple")
+df <- data.frame(ROCR.simple)
+df$predclass <- ifelse(df$predictions>0.5, 1, 0) #用0.5當作門檻值 
+print(cf <- table(df[,c("predclass","labels")]))
+tp <- cf[2, 2]
+tn <- cf[1, 1]
+fp <- cf[2, 1]
+fn <- cf[1, 2]
+accuracy <- (tp + tn)/(tp + tn + fp + fn); accuracy
+sensitivity <- tp/(tp + fn); sensitivity
+specificity <- tn/(tn + fp); specificity
+```
+
+```{r confusion matrix index}
+#install.packages('caret')
+#require(caret)
+
+confusionMatrix(cf, positive = "1")
+```
 
 ***
 以上是直接觀察計算就可以得到的一級指標，透過上述的值，我們還可以進一步推算二級、三級指標。<br>
@@ -166,7 +195,7 @@ FN又被稱為一型錯誤；假警報(ɑ錯誤)，FP則為二型錯誤：錯過
 另外，<br>
 \[\frac{1}{F_{\beta}}=\frac{1}{(\beta^{2}+1)} \times (\frac{1}{P} +\frac{\beta^{2}}{R})\]
 \[F_{\beta}=\frac{(\beta^{2}+1)\cdot P\cdot R}{\beta^{2} \cdot P+R}\]
-若想知道公式推導，可以參考 [Stackflow](https://stats.stackexchange.com/questions/221997/why-f-beta-score-define-beta-like-that)<br>
+若想知道公式推導，可以參考 [Stackexchange](https://stats.stackexchange.com/questions/221997/why-f-beta-score-define-beta-like-that)<br>
 當\(\alpha=0.5\)或\(\beta=1\)時，就成為常見的F1-Measure了，這裡的1就是指β。
 \[F_{1}=\frac{2 \cdot P \cdot R}{P+R}\]
 \[F_{1} \in [0,1]\]
@@ -212,20 +241,25 @@ ROC全名，Receiver Operating Characteristic，不需要記中文名字！沒�
 >ROC曲線是以圖像的方式呈現二分類系統(binary classifier system)在特定的分類或閾值(discrimination threshold)下的表現。圖形的縱軸(y-axis)為真陽性率(true positive rate; TPR)，又稱為敏感度(sensitivity)；橫軸(x-axis)為偽陽性率(false-posiitive rate; FPR)，以1 – 特異度(specificity)表示，而敏感度為將結果正確判斷為陽性的機率，特異度係將結果正確判斷為負向或陰性的機率。
 當指定一個分界點(cut-point)來區分檢驗的陽性與陰性時，這個分界點會影響到診斷工具的敏感度(sensitivity)及特異度(specificity)。
 
-這個分界點其實就是門檻值，舉例來說，如果今天模型預測降雨機率是68%，那麼該歸類為"雨天"陽性，還是＂晴天"陰性呢？就看歸類為陽性的門檻值設定為多少，可想而知，當門檻值設定高時，FP會下降，但是FN會上升，而調低門檻值的話則相反。
+這個分界點其實就是門檻值，舉例來說，如果今天模型預測降雨機率是68%，那麼該歸類為"雨天"陽性，還是"晴天"陰性呢？就看歸類為陽性的門檻值設定為多少，可想而知，當門檻值設定高時，FP會下降，但是FN會上升，而調低門檻值的話則相反。
 
 ![分類結果](.\pics\classfication result.jpg)<br>
 
 那麼如何繪製ROC曲線呢？ROC曲線是由一系列 (FPR, TPR)點構成的，但一個特定的模型，只會有一個分類結果，即只有一組 (FPR, TPR)，對應ROC曲線上的一個點，那一條線是怎麼連出來的呢？<br>
+因門檻值可以調整，隨著調高或調低門檻值，我們可以改變模型將預測機率歸類為正或負類的比例，進而得到不同的分類結果。
 \(TPR=\frac{TP}{TP+FN}\)；\(FPR=\frac{FP}{FP+TN}\)，可一邊參照上圖了解門檻值改變對TPR,FPR的影響<br>
 ![ROCcurve](.\pics\ROCcurves.png)<br>
 圖片來自維基百科
 
 模型對所有樣本分別計算出預測為陽性的機率，我們把這些值算出來後從小至大排列，依次將其當作門檻值，以此可以計算該閾值下，模型預測結果為正類、負類的樣本數，然後生成一組 (FPR, TPR)值，這樣就可以得到ROC曲線上的一點，最後將所有的點連接起來就出現了ROC曲線。<br>
-當閾值設置的次數越多，就會生成更多的 (FPR, TPR)值，畫出的ROC曲線也就越光滑。也就是說ROC曲線的光滑程度與閾值設置多少次相關。
+當閾值設置的次數越多，就會生成更多的 (FPR, TPR)值，畫出的ROC曲線也就越光滑。也就是說ROC曲線的光滑程度與閾值設置多少次相關。<br>
+
+所以，橫軸表示所有負樣本中，被錯誤預測為正的比例；縱軸表示所有正樣本中，被正確預測為正的比例。<br>
+我們當然希望正樣本被預測為正的比例越高越好，所以我們希望縱軸能往上！但是當縱軸的值TPR增加時，橫軸FPR同時也會增加。<br>
+意即門檻放寬，會導致越多某些負樣本被錯誤預測為正樣本。<br>
 
 ROC曲線越靠近左上角，表示效果越好。左上角座標為（0,1），即 FPR = 0，TPR = 1，這意味著FP（假陽性）=0，FN（假陰性）=0，這就是一個完美的模型，因為能夠對所有的樣本正確分類。<br>
-ROC曲線中的對角線（y=x）上的所有的點都表示模型的區分能力與亂猜就沒有差別。<br>
+ROC曲線中的對角線（y=x）上的點表示模型的區分能力與亂猜就沒有差別。<br>
 
 ### AUC值
 
@@ -245,8 +279,8 @@ AUC值介於0-1之間，這裡給個經驗準則：
 | AUC = 0.5  | 等同亂猜 |
 | AUC < 0.5  | 是否為反指標 |
 
-接下來，我們來在R中實現ROC曲線與AUC值，這裡直接引用現成的套件ROCR。
-ROCR套件中有現成的資料集，裡面分別是真實分類和預測機率。
+接下來，我們來在R中實現ROC曲線與AUC值，這裡直接引用現成的套件`ROCR`。
+`ROCR`套件中有現成的資料集，裡面分別是真實分類和預測機率。
 ```{r ROC curve}
 #install.packages('ROCR')
 #require(ROCR)
@@ -268,9 +302,9 @@ ROC曲線中，橫軸是假正率FPR，縱軸是真正率TPR，線上每一點�
 
 KS值是模型將正樣本和負樣本區分開來的最大分類能力。KS值越大，表示模型能夠將正、負分類分開的程度越大，模型的預測準確性越好。KS值的範圍是[0，1]。KS值大於0.2時，即可認為模型預測準確性達到可用要求。一般模型KS值介於0.2到0.6之間，很難超過0.6。<br>
 
-由於KS值能找出模型中差異最大的一個門檻值，因此也適合用來找門檻值cut_off。但是ks值只能反映出哪個門檻值是區分最大的，較不能總體反映出總體模型的分類效果，這點AUC值更能勝任。不過單單比較兩個模型的KS值，也仍然能當作分類能力的參考。如果模型中採用的Feature不佳，沒辦法有效分類樣本，那麼AUC值就會很低，不管門檻值怎麼調都不會好。<br>
+由於KS值能找出模型中差異最大的一個門檻值，因此也適合用來找門檻值cut off。但是KS值只能反映出哪個門檻值是區分最大的，較不能總體反映出總體模型的分類效果，這點AUC值更能勝任。不過單單比較兩個模型的KS值，也仍然能當作分類能力的參考。如果模型中採用的Feature不佳，沒辦法有效分類樣本，那麼AUC值就會很低，不管門檻值怎麼調都不會好。<br>
 
-承接ROC圖，這裡繼續使用ROCR包繪圖，這裡首先先以門檻值為底。
+承接ROC圖，這裡繼續使用ROCR包繪圖，這裡先以門檻值為底。
 ```{r ks plot}
 perf <- ROCR::performance(pred,"tpr","fpr")
 FPR=attr(perf,'x.values')[[1]]
@@ -280,13 +314,15 @@ ks_df <- data.frame(FPR,TPR,Cutoff,KS=TPR-FPR)
 
 ks_max <- max(ks_df$KS)
 plotKS <- ggplot(ks_df)+
-  geom_line(aes(Cutoff,FPR),colour="red2",size=1.2)+
-  geom_line(aes(Cutoff,TPR),colour="blue3",size=1.2)+
+  geom_line(aes(Cutoff,TPR),colour="red2",size=1.2)+
+  geom_line(aes(Cutoff,FPR),colour="blue3",size=1.2)+
   geom_line(aes(Cutoff,TPR-FPR),colour="forestgreen",size=1.2)+
   geom_vline(xintercept=ks_df[ks_df$KS==ks_max,"Cutoff"],linetype=2,colour="gray",size=0.6)+
-  geom_hline(yintercept=ks_df[ks_df$KS==ks_max,"TPR"],linetype=2,colour="forestgreen",size=0.6)+
+  geom_hline(yintercept=ks_df[ks_df$KS==ks_max,"TPR"],linetype=2,colour="red2",size=0.6)+
   geom_hline(yintercept=ks_df[ks_df$KS==ks_max,"FPR"],linetype=2,colour="blue3",size=0.6)+
-  geom_hline(yintercept=ks_df[ks_df$KS==ks_max,"KS"],linetype=2,colour="red2",size=0.6)+
+  geom_hline(yintercept=ks_df[ks_df$KS==ks_max,"KS"],linetype=2,colour="forestgreen",size=0.6)+
+  geom_text(aes(x = 0.25, y = 1.0, label = "TPR"),colour="red2") + 
+  geom_text(aes(x = 0.125, y = 0.60, label = "FPR"), colour = "blue3") + 
   xlab("Cutoff")+
   ylab("TPR & FRP")+
   ggtitle(label="KS - Chart")+
@@ -294,16 +330,28 @@ plotKS <- ggplot(ks_df)+
   theme(plot.title=element_text(colour="gray24",size=12,face="bold"),
         plot.background = element_rect(fill = "gray90"),
         axis.title=element_text(size=10),
-        axis.text=element_text(colour="gray35"))
+        axis.text=element_text(colour="gray35"),
+        legend.position = "right")
 plotKS
 ```
-我們有另一種方法可以呈現KS值，改以累積百分比橫軸，陽性或陰性的累積佔比為Y軸，這也是較主流的做法。<br>
-解釋如下：<br>
-1. 模型會產出預測為陽性的機率值，我們先將資料已此機率值由大到小排序。<br>
-2. 之後我們從第一筆值開始，由於預測機率很高，我們幾乎可以說他會是陽性。<br>
-在Depth=1時，預測成功的累積佔比會是 \(\frac{1}{Total Positive Sample}\)，同時預測失敗的累積佔比是\(\frac{0}{Total Positive Sample}\)<br>
-之後隨著Depth繼續往後，累積成功佔比和累積失敗佔比會不斷累積而成長。<br>
+<br>
+但實際的KS圖，會改用預測機率的百分比作為橫軸，陽性或陰性的累積佔比為Y軸，而為什麼不用上面的畫法呢？<br>
+因為門檻值對應到樣本被預測出來的機率，如果機率多集中在某些值附近，就無法畫出如上圖從門檻值0開始到1都還算滑順的圖。<br>
+因此實際作法如下：<br>
+1. 模型產出預測為陽性的機率值，我們先將資料已此機率值由大到小排序。<br>
+2. 依排序後的機率值由大到小算出不同的百分位數。
+預測機率的百分位數，理解為Depth = proportion allocated to class positive，預測成正例的比例
+Depth=25，表示所有樣本中有百分之25被歸納為陽性。
 
+舉個例：
+如果我有一組資料的預測機率由大到小排序為[0.99,0.87,0.75,0.54,0.49,0.43,0.36,0.21,0.15,0.07]<br>
+而其對應的標籤為[1,1,1,1,0,0,0,0,0,0]<br>
+這時候我們把門檻值設定成0.99以上才能被歸類是陽性，整個10筆預測中，只有一筆會被歸納成是正類。<br>
+不管預測結果是對是錯，被歸納為陽性的筆數/總筆數，我們可以算出這時候佔比為1/10=10%<br>
+被預測為正的1筆中，因此被判斷正確的陽性為1/4，被錯誤判斷的陽性為0/4。
+之後降低門檻值，會讓更多資料被歸納為陽性，隨著百分位數繼續增加，累積成功佔比和累積失敗佔比會不斷累積而成長。<br>
+
+接下來也示範一下，不使用`ROCR`計算TPR、FPR，而是自己手刻的寫法。
 ```{r KS plot2}
 
 ks.plot = function(prediction,label,n=100){
@@ -317,7 +365,7 @@ df$rownum <- 1:nrow(df)
 qus <- quantile(1:nrow(df),probs=seq(0,1,1/n)) #把原本的總比數切成n份
 success_prop <- failure_prop <- NULL
 out <- mapply(function(i){
-  sub_df <- df[df$rownum >=1 & df$rownum < ifelse(i==n,qus[i+1]+0.001,qus[i+1]),] #隨著機率遞減
+  sub_df <- df[df$rownum < ifelse(i==n,qus[i+1]+0.001,qus[i+1]),] #隨著機率遞減
   success_prop <<-c(success_prop,sum(sub_df$label==1)) #實際為1的累積個數
   failure_prop <<-c(failure_prop,sum(sub_df$label==0)) #實際為0的累積個數 
   },1:n)
@@ -331,10 +379,13 @@ plotKS <- ggplot()+
   geom_line(aes(ks_df$rownum,ks_df$failure_prop),colour="blue3",size=1.2)+
   geom_line(aes(ks_df$rownum,ks_df$KS),colour="forestgreen",size=1.2)+
   geom_vline(xintercept=ks_df[ks_df$KS==ks_max,"rownum"],linetype=2,colour="gray",size=0.6)+
-  geom_hline(yintercept=ks_df[ks_df$KS==ks_max,"success_prop"],linetype=2,colour="forestgreen",size=0.6)+
+  geom_hline(yintercept=ks_df[ks_df$KS==ks_max,"success_prop"],linetype=2,colour="red2",size=0.6)+
   geom_hline(yintercept=ks_df[ks_df$KS==ks_max,"failure_prop"],linetype=2,colour="blue3",size=0.6)+
-  geom_hline(yintercept=ks_df[ks_df$KS==ks_max,"KS"],linetype=2,colour="red2",size=0.6)+
-  xlab("Depth")+
+  geom_hline(yintercept=ks_df[ks_df$KS==ks_max,"KS"],linetype=2,colour="forestgreen",size=0.6)+
+  annotate("text", x = 10, y = 1.05, label=paste("KS=", round(ks_max, 4)), size=4,alpha=0.8)+
+  geom_text(aes(x = 75, y = 1.0, label = "TPR"),colour="red2") + 
+  geom_text(aes(x = 80, y = 0.6, label = "FPR"), colour = "blue3") + 
+  xlab("% allocated to class positive")+
   ylab("Cumulative proportion")+
   ggtitle(label="KS - Chart")+
   theme_bw()+
@@ -342,13 +393,50 @@ plotKS <- ggplot()+
         plot.background = element_rect(fill = "gray90"),
         axis.title=element_text(size=10),
         axis.text=element_text(colour="gray35"))
-  return(list(plotKS,ks_max))
+  return(list(plotKS=plotKS,ks_max=ks_max))
 }
 
 ks.plot(ROCR.simple$predictions,ROCR.simple$labels,100)
 
 ```
+由結果可知，兩個方法算出來的KS值相同。<br>
+前一張用cutoff門檻值當X軸，而每一個門檻值的取值都是實際被預測出來的機率，若這個預測出來的機率值本身分布不均，就無法看到趨勢。
+而下圖是用百分位數的方法呈現，是把機率做排名之後用百分位數依序表示，不受原本機率值分布情形影響。
 
+## Gain 累積增益圖 / Lift 累積提升圖
+
+跟上圖同樣原理，我們把縱軸的指標換一下，換成Gain值和Lift值，可以得到累積增益圖和累積提升圖。<br>
+橫軸一樣是總樣本數中預測成陽性的比例，就是上面講的Depth，也被表示成Rate of Positive Predictions<br>
+\[RPP(Rate\ of\ positive\ predictions) =\frac{TP+FP}{P+N}\]
+當門檻值不同時，RPP會變動，其值範圍為[0,1]。<br>
+
+累積增益圖其實就是KS圖只留下TPR那條線，Gain為所有正類中，成功被分類為正的比例，增益圖反映門檻值設定不同時，對應到的不同召回率。
+\[Gain=\frac{TP}{TP+FN}\]
+
+另外，提升值(Lift Value)則進一步考慮了在某個RPP下的TPR(Recall)  \(TPR=\frac{TP}{TP+FN} \)的這個相對性概念，用TPR/RPP計算。<br>
+\[Lift=\frac{\frac{TP}{TP+FN}}{\frac{TP+FP}{P+N}}\]
+
+這裡就偷懶，直接用`ROCR`的功能來產！<br>
+```{r gain plot}
+pred <- ROCR::prediction(ROCR.simple$predictions, ROCR.simple$labels) 
+gain <- ROCR::performance(pred, "tpr", "rpp")
+plot(gain, main = "Gain Chart",col = "red2", lwd = 3)
+
+lift <- ROCR::performance(pred,"lift","rpp")
+plot(lift, main = "Lift Chart",col = "red2", lwd = 3)
+```
+
+## Response 累積回應圖
+所謂回應，可以用個簡單的例子說明。<br>
+如果針對100個客戶進行行銷，其中5位參與，回應率就是5%。<br>
+那我們實際為正的個數除以模型分類出來為正的個數比值，就是回應Response值。
+累積回應圖就是基於各分位數Depth對應區間中的回應率繪製的。
+結果會跟Lift圖很類似，只是縱軸的尺度不一樣。
+```{r Response plot}
+pred <- ROCR::prediction(ROCR.simple$predictions, ROCR.simple$labels) 
+response <- ROCR::performance(pred,"ppv","rpp")
+plot(response, main = "Response Chart",col = "red2", lwd = 3)
+```
 
 ***
 參考資料：<br>
